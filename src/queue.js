@@ -1,6 +1,8 @@
 /*
- * Shared queue state. Used by both the Stop hook and the GUI, which write
- * concurrently — hence atomic writes.
+ * Queue state on disk.
+ *
+ * Writes are atomic because the hook fires as a short-lived process on every
+ * turn end, and the CLI can be run at the same moment from a terminal.
  *
  * A queue is keyed by project directory, stored at
  *   <project>/.claude/claudeque/queue.json
@@ -14,7 +16,7 @@ const path = require('path');
  * A factory, never a shared constant. A `{ ...EMPTY }` spread copies the
  * `items` array by reference, so the first push on a missing-file load mutates
  * the shared default and every later clear() writes that stale array back out.
- * Short-lived hook processes hide this; the long-lived GUI would not.
+ * A short-lived hook process hides this; anything long-lived would not.
  */
 function emptyState() {
   return {

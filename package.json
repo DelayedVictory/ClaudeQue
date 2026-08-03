@@ -1,14 +1,11 @@
 {
   "name": "claudeque",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Feeds queued prompts to Claude Code one at a time, at true end-of-turn.",
-  "main": "main.js",
+  "description": "Queue prompts for Claude Code with que:, delivered one at a time at true end-of-turn.",
   "scripts": {
-    "start": "electron .",
-    "test": "node src/test.js"
-  },
-  "devDependencies": {
-    "electron": "^33.0.0"
+    "test": "node src/test.js && node src/install.test.js",
+    "install-hooks": "node install.js",
+    "uninstall-hooks": "node install.js --uninstall"
   }
 }

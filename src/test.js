@@ -99,19 +99,6 @@ check(
   '{}'
 );
 
-// additionalContext variant — fallback if a block cap ever appears.
-q.add(CWD, 'context mode task');
-const ctx = JSON.parse(
-  stop({ last_assistant_message: 'r5' }, { CLAUDEQUE_MODE: 'context' })
-);
-check('context mode uses additionalContext', ctx.hookSpecificOutput.hookEventName, 'Stop');
-check(
-  'context mode carries the prompt',
-  ctx.hookSpecificOutput.additionalContext.includes('context mode task'),
-  true
-);
-check('context mode sets no decision', ctx.decision, undefined);
-
 // A simultaneous double-fire of the SAME stop must pop only once...
 q.add(CWD, 'dup-A');
 q.add(CWD, 'dup-B');
@@ -233,6 +220,44 @@ check('injection forbids clarifying questions',
   inj.reason.includes('Do NOT ask clarifying questions'), true);
 check('  and offers parking as the escape hatch', inj.reason.includes('park'), true);
 q.clear(CWD);
+
+// ---------------------------------------------------------------- cli
+
+function cli(...args) {
+  const r = spawnSync(process.execPath, [HOOK, ...args], {
+    encoding: 'utf8',
+    cwd: CWD,
+  });
+  return { out: r.stdout.trim(), code: r.status };
+}
+
+q.clear(CWD);
+cli('add', 'alpha');
+cli('add', 'beta');
+cli('add', 'gamma');
+check('add via CLI', q.load(CWD).items.length, 3);
+
+cli('move', '3', 'up');
+check('move up reorders', q.load(CWD).items.map((i) => i.text), ['alpha', 'gamma', 'beta']);
+cli('move', '1', 'down');
+check('move down reorders', q.load(CWD).items.map((i) => i.text), ['gamma', 'alpha', 'beta']);
+check('move needs a direction', cli('move', '1', 'sideways').code, 1);
+check('move rejects out of range', cli('move', '9', 'up').code, 1);
+
+cli('edit', '2', 'alpha revised');
+check('edit rewrites an item', q.load(CWD).items[1].text, 'alpha revised');
+check('edit rejects blank text', cli('edit', '2', '   ').code, 1);
+check('edit rejects out of range', cli('edit', '9', 'x').code, 1);
+
+cli('remove', '1');
+check('remove drops one', q.load(CWD).items.length, 2);
+cli('pause');
+check('pause sets the flag', q.load(CWD).paused, true);
+cli('resume');
+check('resume clears it', q.load(CWD).paused, false);
+cli('clear');
+check('clear empties', q.load(CWD).items.length, 0);
+check('unknown command exits non-zero', cli('flibble').code, 1);
 
 // ---------------------------------------------------------------- pretool
 

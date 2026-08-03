@@ -11,10 +11,8 @@
  *   node src/hook.js stop
  *
  * CLI (acts on the queue for the current directory):
- *   node src/hook.js add "text" | list | remove <n> | pause | resume | clear
- *
- * Set CLAUDEQUE_MODE=context to inject via hookSpecificOutput.additionalContext
- * rather than decision:block — a fallback should a block cap ever appear.
+ *   node src/hook.js add "text" | list | edit <n> "text" | move <n> <up|down>
+ *   node src/hook.js remove <n> | pause | resume | clear | parked | unpark
  */
 
 const crypto = require('crypto');
@@ -69,14 +67,12 @@ function emit(obj) {
   throw THROWN_EXIT;
 }
 
+/*
+ * `block` is the hook API's word for "do not stop yet" — it blocks the stop,
+ * not the prompt, and `reason` becomes Claude's next instruction.
+ */
 function injection(text) {
-  const body = PREFIX + text;
-  if (process.env.CLAUDEQUE_MODE === 'context') {
-    return {
-      hookSpecificOutput: { hookEventName: 'Stop', additionalContext: body },
-    };
-  }
-  return { decision: 'block', reason: body };
+  return { decision: 'block', reason: PREFIX + text };
 }
 
 function preview(text, n = 60) {
@@ -290,7 +286,6 @@ function handleStop(payload, cwd) {
     queueLenBefore: before,
     queueLenAfter: state.items.length,
     consecutiveBlocks: state.consecutiveBlocks,
-    mode: process.env.CLAUDEQUE_MODE || 'block',
     injected: preview(item.text),
   });
 
@@ -377,6 +372,32 @@ function handleCli(mode, cwd, argv) {
     return;
   }
 
+  if (mode === 'edit') {
+    const n = Number(argv[3]);
+    const text = argv.slice(4).join(' ');
+    if (!Number.isInteger(n) || n < 1 || n > state.items.length || !text.trim()) {
+      console.error(`Usage: node src/hook.js edit <1-${state.items.length}> "new text"`);
+      process.exitCode = 1;
+      return;
+    }
+    q.update(cwd, state.items[n - 1].id, text);
+    console.log(`Updated #${n}: ${preview(text)}`);
+    return;
+  }
+
+  if (mode === 'move') {
+    const n = Number(argv[3]);
+    const dir = String(argv[4] || '').toLowerCase();
+    const delta = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+    if (!Number.isInteger(n) || !delta || !q.move(cwd, (state.items[n - 1] || {}).id, delta)) {
+      console.error(`Usage: node src/hook.js move <1-${state.items.length}> <up|down>`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Moved #${n} ${dir}.`);
+    return;
+  }
+
   if (mode === 'add') {
     const text = argv.slice(3).join(' ').trim();
     if (!text) {
@@ -399,9 +420,26 @@ function main() {
   const mode = process.argv[2];
 
   const cliModes = ['add', 'list', 'clear', 'pause', 'resume', 'remove',
-    'park', 'parked', 'unpark'];
+    'edit', 'move', 'park', 'parked', 'unpark'];
+  const hookModes = ['stop', 'enqueue', 'pretool'];
+
   if (cliModes.includes(mode)) {
     handleCli(mode, process.cwd(), process.argv);
+    return;
+  }
+
+  /*
+   * Reject anything unrecognised here rather than falling through to the hook
+   * path, where it would wait on stdin, find nothing, and exit 0 — making a
+   * mistyped command look like it worked.
+   */
+  if (!hookModes.includes(mode)) {
+    console.error(
+      `Unknown command: ${mode || '(none)'}\n\n` +
+        `Queue:  ${cliModes.join(' | ')}\n` +
+        `Hooks:  ${hookModes.join(' | ')}  (invoked by Claude Code, not by hand)`
+    );
+    process.exitCode = 1;
     return;
   }
 
@@ -416,8 +454,7 @@ function main() {
       cwd = payload.cwd || cwd;
       if (mode === 'stop') handleStop(payload, cwd);
       else if (mode === 'enqueue') handleEnqueue(payload, cwd);
-      else if (mode === 'pretool') handlePreTool(payload, cwd);
-      else emit(null);
+      else handlePreTool(payload, cwd);
     } catch (err) {
       if (err === THROWN_EXIT) return; // normal termination
       // Anything else, malformed input included, must not break the session.

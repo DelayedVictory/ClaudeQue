@@ -1,35 +1,39 @@
 # ClaudeQue
 
-A small always-on-top window holding a prompt queue for Claude Code. Prompts are
-delivered **one at a time**, each only after the previous one has genuinely
-finished.
+Queue prompts for Claude Code by typing `que:` in the chat. They're delivered
+**one at a time**, each only after the previous one has genuinely finished.
 
-Claude Code's built-in queue flushes everything at the next *LLM pause* — between
-tool calls, after a subagent returns — so a batch of prompts lands mid-task and
-derails whatever Claude was doing. ClaudeQue uses the `Stop` hook, which fires
-only at true end-of-turn, to release exactly one prompt per completed turn.
+```
+que: fix the header alignment
+que: then write tests for it
+que: then update the changelog
+```
+
+Claude Code's built-in queue flushes everything at the next *LLM pause* —
+between tool calls, after a subagent returns — so a batch of prompts lands
+mid-task and derails whatever Claude was doing. ClaudeQue uses the `Stop` hook,
+which fires only at true end-of-turn, to release exactly one prompt per
+completed turn.
+
+No dependencies. Node and Claude Code, nothing else.
 
 ---
 
 ## Install
 
-Requires Node 18+ and the Claude Code desktop app. Clone or copy the folder
-anywhere, then:
-
 ```bash
-npm install
+git clone https://github.com/DelayedVictory/ClaudeQue.git
+cd ClaudeQue
 node install.js
 ```
 
-That registers two hooks in `~/.claude/settings.json` and adds a rule to
-`~/.claude/CLAUDE.md`, both pointing at wherever you put the repo. It merges
-in place — existing hooks, permissions and CLAUDE.md content are preserved —
+This registers three hooks in `~/.claude/settings.json` and adds a rule to
+`~/.claude/CLAUDE.md`, both pointing at wherever you cloned it. It merges in
+place — your existing hooks, permissions and CLAUDE.md content are preserved —
 and is safe to re-run.
 
 **Restart Claude Code afterwards.** Hooks reload live, but `CLAUDE.md` is only
 read at session start, so chats already open won't pick up the rule.
-
-Then type `que: something` in any project.
 
 To remove it:
 
@@ -39,108 +43,146 @@ node install.js --uninstall
 
 Queue files under each project's `.claude/claudeque/` are left alone.
 
-The GUI is optional — `npm start`, or double-click `ClaudeQue.bat` on Windows.
-
-Queues live per-project at `<project>/.claude/claudeque/queue.json`, so parallel
-sessions never interfere.
-
-**The queue drains whether or not the app is open.** The hook reads the queue
-file directly; the GUI is just an editor for it. Close the window and a queued
-run keeps going.
-
 ---
 
 ## Using it
 
-1. Pick a project from the dropdown. Live Claude Code sessions are detected
-   automatically and marked `•`; use **+** to add any other folder.
-2. Type a prompt and press **Ctrl+Enter** (or click *Add to queue*).
-3. Give Claude a starting task. When that turn ends, the queue takes over.
+Type `que: <task>` in any chat. Then send any message to start things off — the
+queue drains at the *end of a turn*, so if Claude is idle and nothing is
+running, nothing happens until a turn ends.
 
-Per item: **▲▼** to reorder, **✕** to remove, double-click the text to edit.
-**Pause** stops delivery after the current item without discarding anything.
+`que:`, `queue:`, `next:` and `q:` all work.
+
+**One item, multi-line** — a prompt keeps its shape:
+
+```
+que: fix the header
+     - keep it centred
+     - add a test
+```
+
+**Several items** — repeat the prefix per line:
+
+```
+que: something 1
+que: something 2
+```
 
 ### From the terminal
 
-The CLI acts on the queue for the current directory:
+Acts on the queue for the current directory:
 
 ```bash
-node src/hook.js add "write tests for the parser"
 node src/hook.js list
+node src/hook.js add "write tests for the parser"
+node src/hook.js edit 2 "revised wording"
+node src/hook.js move 3 up
 node src/hook.js remove 2
 node src/hook.js pause
 node src/hook.js resume
 node src/hook.js clear
 ```
 
+Queues live per-project at `<project>/.claude/claudeque/queue.json`, so parallel
+sessions never interfere.
+
 ---
-
-## Behaviour
-
-- **Nothing is lost.** Items leave `queue.json` only when popped, and the pop is
-  written to disk before the response is emitted. Closing the app, an error, or
-  a stalled run all leave the remainder intact.
-- **Focus is irrelevant.** The hook runs in the Claude Code process, not the UI.
-  Minimize the window or switch apps — the queue keeps draining.
-- **Your messages win.** Send something mid-run and it takes that turn; the queue
-  resumes on the next one.
-
-### What stops a run
-
-| Cause | Behaviour |
-| --- | --- |
-| Queue empties | Hook returns `{}`, Claude stops normally |
-| Pause | Stops after the current item; items are held |
-| Claude needs input (e.g. a permission prompt) | The turn never ends, so no `Stop` fires — it waits for you |
-| **You interrupt the turn** (Esc) | `Stop` does not fire on interrupt, so the queue freezes. Send any message to resume. |
-| App or session closed | Items persist and resume next session |
-
-The interrupt case is the one that looks broken but isn't: the queue sits at its
-current count indefinitely with nothing in the log. If a queue seems stuck,
-check whether that turn was interrupted or is waiting on a permission prompt
-before suspecting the hook.
-
-### Sessions started before setup have no `que:` support
-
-**Hooks reload live; `~/.claude/CLAUDE.md` does not.** It is read once at session
-start, so a chat opened before that file existed has no busy-path rule — typing
-`que:` there reaches Claude as an ordinary message, and it may *reply* as though
-it queued something while writing nothing to disk.
-
-There is no way to inject the rule into a running session. If `que:` seems to be
-accepted but the queue stays empty, close and reopen that chat.
 
 ## Unattended runs
 
-Queued tasks run with nobody watching, so two things that normally pause Claude
-would otherwise stall a whole queue.
+A queue is useless if item 5 stops and waits for you, so two things are handled.
 
-**Clarifying questions.** Every injected task carries an instruction not to ask
-— choose the most reasonable interpretation, proceed, and state the assumption.
-If a task genuinely cannot proceed (missing credentials, a destructive choice
-with no safe default) Claude *parks* it and moves on:
+**Questions.** While a queue is draining, a `PreToolUse` hook denies the
+`AskUserQuestion` tool and tells Claude to choose the most reasonable option,
+proceed, and state the assumption it made.
+
+`bypassPermissions` does *not* solve this on its own: bypass approves the tool
+*running*, and running it means rendering a dialog and waiting. The turn stays
+open, no `Stop` fires, and every task behind it freezes.
+
+The hook touches **nothing else** — every other tool defers to the normal
+permission flow, and outside a queued run `AskUserQuestion` works as usual.
+
+**Genuinely blocked tasks.** If a task can't proceed without an answer (missing
+credentials, a destructive choice with no safe default), Claude parks it and
+moves on rather than stalling the queue:
 
 ```bash
 node src/hook.js parked    # what was set aside, and why
 node src/hook.js unpark    # clear the list
 ```
 
-Parked tasks live in `parked.json`, separate from the queue, so the rest keeps
-draining.
+The trade is real: item 5 now completes on an assumption instead of waiting.
+`deny-question` entries in `.claude/claudeque/debug.log` record what it wanted
+to ask, which is worth skimming after a long run.
 
-**The `AskUserQuestion` tool.** This is the one that really bites, and
-`bypassPermissions` does *not* save you: bypass approves the tool *running*, and
-running it means rendering a dialog and waiting for a human. The turn stays open,
-no `Stop` fires, and every task behind it freezes.
+---
 
-So while a queue is draining, a `PreToolUse` hook **denies** that one tool, with
-a reason telling Claude to decide and proceed, or park. Denials are recorded in
-`.claude/claudeque/debug.log` as `deny-question` entries, along with what it
-wanted to ask — worth reading afterwards to see what it guessed.
+## Behaviour
 
-The hook touches **nothing else**. Every other tool defers to the normal
-permission flow, so whatever gate a session already has is unchanged, and outside
-a queued run `AskUserQuestion` works as usual.
+- **Nothing is lost.** Items leave `queue.json` only when popped, and the pop is
+  written to disk before the response is emitted. An error, a stalled run, or a
+  closed session all leave the remainder intact.
+- **Focus is irrelevant.** The hook runs inside Claude Code. Minimise the window
+  or switch apps; the queue keeps draining.
+- **Your messages win.** Send something mid-run and it takes that turn; the
+  queue resumes on the next one.
+
+### What stops a run
+
+| Cause | Behaviour |
+| --- | --- |
+| Queue empties | Hook returns `{}`, Claude stops normally |
+| `pause` | Stops after the current item; items are held |
+| **You interrupt the turn** (Esc) | `Stop` does not fire on interrupt, so the queue freezes. Send any message to resume. |
+| Plan mode | `ExitPlanMode` waits for approval and is not handled. Don't queue into a plan-mode session. |
+| Permission prompt (if not in bypass) | Does not end the turn, so no `Stop` fires |
+| Session closed | Items persist and resume next session |
+
+The interrupt case is the one that looks broken but isn't: the queue sits at its
+count indefinitely with nothing new in the log.
+
+---
+
+## How it works
+
+Three hooks in `~/.claude/settings.json`, all running `src/hook.js`:
+
+| Hook | Mode | Job |
+| --- | --- | --- |
+| `UserPromptSubmit` | `enqueue` | Catches `que:` when Claude is **idle** and files it |
+| `Stop` | `stop` | Fires at true end-of-turn; pops one item and injects it |
+| `PreToolUse` | `pretool` | Denies `AskUserQuestion` while a queue is draining |
+
+Delivery returns `{"decision":"block","reason":"<task>"}`. In the hook API
+`block` means *don't stop yet* — it blocks the stop, not your prompt, and
+`reason` becomes Claude's next instruction. Claude Code renders this in error
+styling; that red line is the queue working.
+
+Plus a rule in `~/.claude/CLAUDE.md`, which covers the case hooks can't:
+
+> **`UserPromptSubmit` only fires when Claude is idle.** Anything typed while
+> Claude is *working* is a steering message that bypasses hooks entirely and
+> lands mid-turn — verified by experiment. Since that's exactly when you want to
+> queue, the rule tells Claude to file `que:` messages itself and carry on.
+
+That half is an instruction rather than a hook, so it's reliable but not
+guaranteed. If a session ever answers a `que:` message instead of queueing it,
+that's why — and a session started before the rule existed won't have it at all.
+
+---
+
+## Verified on Claude Code desktop v2.1.219
+
+Tested, not assumed:
+
+- 10 queued prompts delivered one at a time, in order, then a clean stop.
+- **No `Stop`-hook block cap.** 10 consecutive blocks, no throttling. The widely
+  repeated "hard cap of 8" is folklore; the docs correctly document no limit.
+- **`UserPromptSubmit` fires only when idle.** `que: idle test` logged
+  `matched:true`; `que: busy test` typed during a 90-second task never reached
+  the hook at all.
+- **`Stop` does not fire on user interrupt.**
 
 ### Known limits
 
@@ -150,25 +192,8 @@ a queued run `AskUserQuestion` works as usual.
 - If Claude produces a byte-identical reply for two consecutive items within 2s,
   the duplicate-invocation guard suppresses the second pop and the queue waits a
   turn. Tune with `CLAUDEQUE_DEDUPE_MS`.
-
-### Why there is no `next:` chat command
-
-An earlier version let you type `next: <prompt>` in the chat, intercepted via a
-`UserPromptSubmit` hook. It was removed: that hook only fires when Claude is
-**idle**. Anything typed while Claude is working is a steering message that
-bypasses hooks entirely — which is exactly when you want to queue. The chat box
-is unavailable at the only moment it would matter, so the queue needs its own
-window.
-
----
-
-## Verified on Claude Code desktop v2.1.219
-
-- 10 queued prompts delivered one at a time, in order, then a clean stop.
-- **No block cap.** 10 consecutive `Stop` blocks with no throttling — the widely
-  repeated "hard cap of 8" does not apply. `CLAUDEQUE_MODE=context` switches
-  injection to `hookSpecificOutput.additionalContext` as a fallback if that ever
-  changes.
+- Windows-tested only. The code is plain Node with no platform-specific paths,
+  so it should work elsewhere, but nobody has checked.
 
 ---
 
@@ -176,9 +201,12 @@ window.
 
 | Path | Purpose |
 | --- | --- |
-| `main.js` | Electron main — window, project discovery, IPC, polling |
-| `preload.js` | `contextBridge` API for the renderer |
-| `renderer/` | UI |
-| `src/queue.js` | Queue state, shared by the hook and the GUI. Atomic writes. |
-| `src/hook.js` | The `Stop` hook, and the CLI |
-| `src/test.js` | 41 tests — `npm test` |
+| `install.js` | Merges hooks and the rule into `~/.claude/`; `--uninstall` reverses it |
+| `src/hook.js` | All three hook modes, and the CLI |
+| `src/queue.js` | Queue state. Atomic writes. |
+| `src/test.js` | Engine tests |
+| `src/install.test.js` | Installer tests — that it never clobbers foreign config |
+
+```bash
+npm test
+```

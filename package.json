@@ -1,0 +1,14 @@
+{
+  "name": "claudeque",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Feeds queued prompts to Claude Code one at a time, at true end-of-turn.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node src/test.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

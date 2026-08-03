@@ -1,0 +1,9 @@
+node_modules/
+
+# Per-project queue state and hook logs — machine-local, never shared.
+.claude/claudeque/
+
+# Test scratch
+.testcwd/
+.dbg*/
+dbg*.js

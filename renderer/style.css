@@ -1,0 +1,298 @@
+:root {
+  --bg: #1a1a1a;
+  --panel: #232323;
+  --panel-hi: #2c2c2c;
+  --line: #383838;
+  --text: #e8e6e3;
+  --dim: #8f8b86;
+  --accent: #d97757;
+  --danger: #c2554a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+/* ---------------------------------------------------------------- header */
+
+header {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+button {
+  font: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--panel-hi);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.icon {
+  padding: 5px 9px;
+  line-height: 1;
+}
+
+button.icon.on {
+  border-color: var(--accent);
+}
+
+button.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--dim);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+button.ghost:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel);
+}
+
+button.ghost.danger:hover:not(:disabled) {
+  color: #fff;
+  background: var(--danger);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+
+/* ---------------------------------------------------------------- list */
+
+ul {
+  flex: 1;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+li {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+li.next {
+  border-color: var(--accent);
+}
+
+.num {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  padding-top: 1px;
+  min-width: 16px;
+}
+
+li.next .num {
+  color: var(--accent);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
+}
+
+.text[contenteditable="true"] {
+  outline: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.actions button {
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  border-color: transparent;
+  background: none;
+  color: var(--dim);
+}
+
+.actions button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-hi);
+}
+
+/* ---------------------------------------------------------------- empty */
+
+.empty {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  gap: 6px;
+}
+
+.empty p {
+  margin: 0;
+  max-width: 260px;
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- footer */
+
+footer {
+  padding: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  user-select: text;
+}
+
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+body.paused header {
+  background: rgba(194, 85, 74, 0.12);
+}
+
+/* ---------------------------------------------------------------- status */
+
+.statusbar {
+  display: none;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--dim);
+}
+
+.statusbar.show {
+  display: flex;
+}
+
+.statusbar #statustext {
+  flex: 1;
+}
+
+/* Working: the queue is advancing, nothing to do. */
+.statusbar.working {
+  border-color: rgba(217, 119, 87, 0.35);
+}
+
+/* Needs the user: paused, stalled, or no session to deliver into. */
+.statusbar.attention {
+  border-color: var(--danger);
+  color: var(--text);
+  background: rgba(194, 85, 74, 0.1);
+}
+
+button.tiny {
+  padding: 3px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  border-color: var(--line);
+}
+
+.statusbar.attention button.tiny {
+  border-color: var(--danger);
+}
+
+button.tiny.hidden {
+  display: none;
+}

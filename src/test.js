@@ -92,6 +92,9 @@ check('second pop is item two', s2.reason.includes('second task'), true);
 
 const s3 = JSON.parse(stop({ stop_hook_active: true, last_assistant_message: 'r3' }));
 check('third pop is item three', s3.reason.includes('third task'), true);
+// A popped item has left the queue, so its text must be recorded or the item
+// being worked on cannot be named — especially the last one of a run.
+check('the running item is recorded', q.load(CWD).lastItem, 'third task');
 
 check(
   'empty queue returns {}',
@@ -319,10 +322,15 @@ q.setPaused(CWD, false);
 
 // The queue empties before the last item finishes — the longest unattended
 // stretch of a run, and the worst moment to show nothing.
-q.save(CWD, { ...q.emptyState(), consecutiveBlocks: 4, lastPopAt: Date.now() - 6 * 60 * 1000 });
+q.save(CWD, {
+  ...q.emptyState(),
+  consecutiveBlocks: 4,
+  lastPopAt: Date.now() - 6 * 60 * 1000,
+  lastItem: 'rename the project everywhere',
+});
 check('last item running is still reported', statusline().includes('4/4'), true);
 check('  with elapsed time', statusline().includes('6m'), true);
-check('  and says what it is doing', statusline().includes('last item running'), true);
+check('  and names what is running', statusline().includes('now: rename the project'), true);
 
 // Once that run goes stale, fall silent again.
 q.save(CWD, { ...q.emptyState(), consecutiveBlocks: 4, lastPopAt: Date.now() - 3 * 60 * 60 * 1000 });

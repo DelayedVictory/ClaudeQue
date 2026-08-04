@@ -305,6 +305,7 @@ function handleStop(payload, cwd) {
   state.consecutiveBlocks += 1;
   state.lastTurnKey = turnKey;
   state.lastPopAt = Date.now();
+  state.lastItem = item.text;
   q.save(cwd, state);
 
   q.log(cwd, {
@@ -368,7 +369,9 @@ function handleStatusline(payload) {
     const done = state.consecutiveBlocks || 0;
     parts.push(`${ORANGE}⏳ ${done}/${done}${RESET}`);
     parts.push(`${DIM}${ago(Date.now() - state.lastPopAt)}${RESET}`);
-    parts.push(`${DIM}last item running${RESET}`);
+    parts.push(
+      `${DIM}${state.lastItem ? `now: ${preview(state.lastItem, 40)}` : 'last item running'}${RESET}`
+    );
   } else if (waiting && !running) {
     // Items are waiting but nothing has been delivered recently — queued then
     // left, or a restart mid-run. The queue only advances at the end of a turn,
@@ -483,8 +486,12 @@ function handleWatch(cwd) {
         console.log(`[${stamp()}] PAUSED - ${waiting} held`);
       } else if (waiting || done) {
         const total = done + waiting;
-        const next = waiting ? ` - next: ${preview(state.items[0].text, 60)}` : '';
-        console.log(`[${stamp()}] ${done}/${total}${next}`);
+        // Name what is being worked on. Before the first delivery there is
+        // nothing running yet, so the head of the queue is what to report.
+        const label = done
+          ? `now: ${preview(state.lastItem, 60)}`
+          : `next: ${preview(state.items[0].text, 60)}`;
+        console.log(`[${stamp()}] ${done}/${total} - ${label}`);
         delivered = done;
       }
       if (parked) console.log(`[${stamp()}] ${parked} parked`);

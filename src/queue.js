@@ -25,6 +25,10 @@ function emptyState() {
     paused: false,
     lastTurnKey: null,
     lastPopAt: 0,
+    // Text of the item currently being worked on. Needed because a popped item
+    // has left the queue, so it cannot otherwise be named — and the last item
+    // of a run has nothing after it to report instead.
+    lastItem: null,
   };
 }
 
@@ -95,6 +99,7 @@ function load(cwd) {
       paused: !!parsed.paused,
       lastTurnKey: parsed.lastTurnKey || null,
       lastPopAt: parsed.lastPopAt || 0,
+      lastItem: parsed.lastItem || null,
     };
   } catch {
     return emptyState();

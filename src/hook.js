@@ -16,6 +16,8 @@
  */
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const q = require('./queue');
 
 /*
@@ -77,7 +79,7 @@ function injection(text) {
 
 function preview(text, n = 60) {
   const oneLine = String(text).replace(/\s+/g, ' ').trim();
-  return oneLine.length > n ? oneLine.slice(0, n) + '…' : oneLine;
+  return oneLine.length > n ? oneLine.slice(0, n) + '...' : oneLine;
 }
 
 // ---------------------------------------------------------------- hook
@@ -139,8 +141,19 @@ function handleEnqueue(payload, cwd) {
   const texts = splitItems(prompt);
   if (!texts.length) emit(null);
 
+  const wasEmpty = q.load(cwd).items.length === 0;
   for (const text of texts) q.add(cwd, text);
   const n = q.load(cwd).items.length;
+
+  /*
+   * A queued run is invisible: it happens inside one long turn that the UI
+   * collapses, and the desktop app renders neither statusLine nor
+   * systemMessage (both verified). A background task is the one surface whose
+   * output stays visible, but hooks cannot register one — only Claude can, via
+   * the Bash tool. So ask, on the first item of a run, and let the lock stop
+   * duplicates if this fires more than once.
+   */
+  const startWatcher = wasEmpty && !watcherAlreadyRunning(cwd);
 
   q.log(cwd, {
     event: 'enqueue',
@@ -167,9 +180,17 @@ function handleEnqueue(payload, cwd) {
         `[ClaudeQue] This message is a queue command. ` +
         `${texts.length === 1 ? 'The task has' : `${texts.length} tasks have`} ALREADY been ` +
         `added to the queue (${n} waiting) — do NOT do ${texts.length === 1 ? 'it' : 'them'} now, ` +
-        `and do not restate ${texts.length === 1 ? 'it' : 'them'}. Reply with exactly one short ` +
-        `line, e.g. "Queued — ${n} waiting.", then stop. The Stop hook will deliver queued items ` +
-        `one at a time, starting as soon as this turn ends.`,
+        `and do not restate ${texts.length === 1 ? 'it' : 'them'}. ` +
+        (startWatcher
+          ? `\n\nFIRST, in this same turn, start the progress watcher as a BACKGROUND task ` +
+            `(Bash with run_in_background: true), so the user can follow the run in the ` +
+            `background-tasks panel:\n` +
+            `  node "${__filename.replace(/\\/g, '/')}" watch "${cwd.replace(/\\/g, '/')}"\n` +
+            `Do not wait for it and do not report its output. Then reply with one short line, ` +
+            `e.g. "Queued — ${n} waiting. Watching in the background."\n\n`
+          : `Reply with exactly one short line, e.g. "Queued — ${n} waiting.", then stop. `) +
+        `The Stop hook will deliver queued items one at a time, starting as soon as this ` +
+        `turn ends.`,
     },
   });
 }
@@ -325,6 +346,7 @@ function handleStatusline(payload) {
   const cwd = (payload.workspace && payload.workspace.current_dir) || payload.cwd;
   if (!cwd) return;
 
+
   const state = q.load(cwd);
   const waiting = state.items.length;
   const parked = q.loadParked(cwd).length;
@@ -368,6 +390,122 @@ function handleStatusline(payload) {
   if (parked) parts.push(`${RED}⚑ ${parked} parked${RESET}`);
 
   process.stdout.write(parts.join(` ${DIM}·${RESET} `));
+}
+
+// ---------------------------------------------------------------- watch
+
+/*
+ * A long-running progress view, meant to be started as a background task so
+ * its output streams into Claude Code's background-tasks panel.
+ *
+ * The desktop app has no surface for showing queue progress — it never invokes
+ * statusLine, and systemMessage does not render (both verified) — and a queued
+ * run happens inside one long turn that the UI collapses into a single
+ * activity indicator. A background task is the one place output stays visible.
+ *
+ * Exits once the queue is empty and the run has gone quiet, so the task
+ * completes naturally rather than lingering.
+ */
+const WATCH_POLL_MS = 3000;
+const WATCH_QUIET_MS = 2 * 60 * 1000;
+const WATCH_LOCK_STALE_MS = 15000;
+
+function stamp() {
+  return new Date().toTimeString().slice(0, 8);
+}
+
+function watchLock(cwd) {
+  return path.join(q.stateDir(cwd), 'watch.lock');
+}
+
+/*
+ * One watcher per project. The lock is heartbeated on every poll rather than
+ * holding a pid, so a watcher killed without cleanup goes stale on its own and
+ * the next run is not locked out forever.
+ */
+function watcherAlreadyRunning(cwd) {
+  try {
+    const age = Date.now() - fs.statSync(watchLock(cwd)).mtimeMs;
+    return age < WATCH_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function handleWatch(cwd) {
+  if (watcherAlreadyRunning(cwd)) {
+    console.log('A ClaudeQue watcher is already running for this project.');
+    return;
+  }
+
+  const touchLock = () => {
+    try {
+      fs.mkdirSync(q.stateDir(cwd), { recursive: true });
+      fs.writeFileSync(watchLock(cwd), String(process.pid));
+    } catch {
+      /* the lock is an optimisation, never a requirement */
+    }
+  };
+  const dropLock = () => {
+    try {
+      fs.unlinkSync(watchLock(cwd));
+    } catch {
+      /* already gone */
+    }
+  };
+  process.on('exit', dropLock);
+  process.on('SIGINT', () => process.exit(0));
+  process.on('SIGTERM', () => process.exit(0));
+
+  let lastSignature = null;
+  let delivered = 0;
+  let quietSince = null;
+
+  console.log(`ClaudeQue watching ${cwd}`);
+  console.log('Streaming queue progress. Exits when the queue is done.\n');
+
+  const tick = () => {
+    touchLock();
+    const state = q.load(cwd);
+    const waiting = state.items.length;
+    const done = state.consecutiveBlocks || 0;
+    const parked = q.loadParked(cwd).length;
+
+    // Signature changes only on a real transition, so the log stays quiet
+    // during the minutes a single item takes.
+    const signature = `${waiting}|${done}|${state.paused}|${parked}`;
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+
+      // Plain ASCII: this output lands in panels and consoles whose encoding
+      // is not guaranteed, and mojibake in a progress view is worse than dull.
+      if (state.paused) {
+        console.log(`[${stamp()}] PAUSED - ${waiting} held`);
+      } else if (waiting || done) {
+        const total = done + waiting;
+        const next = waiting ? ` - next: ${preview(state.items[0].text, 60)}` : '';
+        console.log(`[${stamp()}] ${done}/${total}${next}`);
+        delivered = done;
+      }
+      if (parked) console.log(`[${stamp()}] ${parked} parked`);
+    }
+
+    const idle = !waiting && !queueIsRunning(state);
+    if (idle) {
+      quietSince = quietSince || Date.now();
+      if (Date.now() - quietSince > WATCH_QUIET_MS) {
+        console.log(`\n[${stamp()}] Queue finished - ${delivered} delivered.`);
+        if (parked) console.log(`${parked} task(s) parked; run "parked" to review.`);
+        clearInterval(timer);
+        dropLock();
+      }
+    } else {
+      quietSince = null;
+    }
+  };
+
+  const timer = setInterval(tick, WATCH_POLL_MS);
+  tick();
 }
 
 // ---------------------------------------------------------------- cli
@@ -497,6 +635,11 @@ function handleCli(mode, cwd, argv) {
 function main() {
   const mode = process.argv[2];
 
+  if (mode === 'watch') {
+    handleWatch(process.argv[3] || process.cwd());
+    return;
+  }
+
   const cliModes = ['add', 'list', 'clear', 'pause', 'resume', 'remove',
     'edit', 'move', 'park', 'parked', 'unpark'];
   const hookModes = ['stop', 'enqueue', 'pretool', 'statusline'];
@@ -515,6 +658,7 @@ function main() {
     console.error(
       `Unknown command: ${mode || '(none)'}\n\n` +
         `Queue:  ${cliModes.join(' | ')}\n` +
+        `Watch:  watch [projectDir]  (run as a background task)\n` +
         `Hooks:  ${hookModes.join(' | ')}  (invoked by Claude Code, not by hand)`
     );
     process.exitCode = 1;

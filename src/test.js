@@ -154,6 +154,21 @@ q.clear(CWD);
 check('a plain prompt passes through', enqueue('hello there'), '');
 check('  nothing was queued', q.load(CWD).items.length, 0);
 
+// Starting a run asks Claude to launch the watcher as a background task —
+// hooks cannot register one themselves, and it is the only visible surface.
+const firstOfRun = JSON.parse(enqueue('que: refactor the parser'));
+check('first item of a run asks for the watcher',
+  firstOfRun.hookSpecificOutput.additionalContext.includes('run_in_background'), true);
+check('  and passes the project directory',
+  firstOfRun.hookSpecificOutput.additionalContext.includes('watch "'), true);
+
+// Adding to a run already under way must not ask again, or every que: would
+// spawn another watcher.
+const secondOfRun = JSON.parse(enqueue('que: and another thing'));
+check('later items do not ask again',
+  secondOfRun.hookSpecificOutput.additionalContext.includes('run_in_background'), false);
+
+q.clear(CWD);
 const eq = JSON.parse(enqueue('que: refactor the parser'));
 check('  the task is queued', q.load(CWD).items[0].text, 'refactor the parser');
 // Must NOT block: a blocked prompt starts no turn, and the queue only advances

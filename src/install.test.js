@@ -41,7 +41,12 @@ check('  one PreToolUse hook', ourHooks('PreToolUse').length, 1);
 check('  path is absolute and forward-slashed',
   /^node "[A-Za-z]:\/.*\/src\/hook\.js" stop$/.test(settings().hooks.Stop[0].hooks[0].command), true);
 check('writes the busy rule', fs.readFileSync(CLAUDE_MD, 'utf8').includes('que:'), true);
-check('installs the status line', /claudeque/i.test(JSON.stringify(settings().statusLine)), true);
+// The desktop app never invokes statusLine, so it is opt-in rather than default.
+check('no status line by default', settings().statusLine, undefined);
+run('--statusline');
+check('--statusline opts in', /claudeque/i.test(JSON.stringify(settings().statusLine)), true);
+run();
+check('a plain re-run removes it again', settings().statusLine, undefined);
 
 // --- re-running must not duplicate
 run();
@@ -74,9 +79,10 @@ const mine = { type: 'command', command: 'my-own-statusline.sh' };
 const s2 = settings();
 s2.statusLine = mine;
 fs.writeFileSync(SETTINGS, JSON.stringify(s2, null, 2));
-run();
+run('--statusline');
 check('an existing status line is never overwritten', settings().statusLine, mine);
-check('  and the installer says it skipped', run().stdout.includes('skipped'), true);
+check('  and the installer says it skipped',
+  run('--statusline').stdout.includes('skipped'), true);
 run('--uninstall');
 check('  uninstall leaves it alone too', settings().statusLine, mine);
 delete s2.statusLine;

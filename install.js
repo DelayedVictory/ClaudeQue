@@ -25,6 +25,8 @@ const BEGIN = '<!-- BEGIN ClaudeQue -->';
 const END = '<!-- END ClaudeQue -->';
 
 const uninstalling = process.argv.includes('--uninstall');
+// Terminal CLI only — the desktop app ignores statusLine entirely.
+const wantStatusLine = process.argv.includes('--statusline');
 
 // ---------------------------------------------------------------- helpers
 
@@ -115,17 +117,22 @@ function updateSettings() {
 // ---------------------------------------------------------------- statusline
 
 /*
- * `statusLine` is a single field, not a list, so installing ours would silently
- * replace whatever the user already had. Only ever set it if it is absent or
- * already ours; otherwise leave it and say so.
+ * The status line is NOT installed by default: the Claude Code desktop app
+ * never invokes `statusLine` at all — verified by logging every invocation and
+ * seeing none across 25s with a 10s refresh configured. It works in the
+ * terminal CLI, so `--statusline` opts in.
+ *
+ * `statusLine` is a single field rather than a list, so writing it blindly
+ * would replace whatever the user already had; only ever set it when absent or
+ * already ours.
  */
 function updateStatusLine(settings) {
   const current = settings.statusLine;
   const isOurs = current && /claudeque/i.test(JSON.stringify(current));
 
-  if (uninstalling) {
+  if (uninstalling || !wantStatusLine) {
     if (isOurs) delete settings.statusLine;
-    return isOurs ? 'removed' : 'left alone';
+    return isOurs ? 'removed' : uninstalling ? 'left alone' : 'not installed (--statusline to opt in)';
   }
 
   if (current && !isOurs) return 'skipped (you already have one)';

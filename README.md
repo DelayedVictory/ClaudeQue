@@ -81,6 +81,14 @@ Delivered out of the run total, how long the current item has been going, and
 what's up next. Paused queues and parked tasks show there too. It refreshes
 every 10 seconds, and prints nothing at all when there's no queue.
 
+When items are waiting but nothing has been delivered recently — you queued
+them and walked away, or restarted mid-run — it says so instead, because the
+queue needs a turn to end before it moves:
+
+```
+⏳ 2 waiting · send any message to start
+```
+
 If you already have a status line, the installer leaves it alone and tells you
 how to call ClaudeQue's from your own script.
 
@@ -153,7 +161,7 @@ to ask, which is worth skimming after a long run.
 | **You interrupt the turn** (Esc) | `Stop` does not fire on interrupt, so the queue freezes. Send any message to resume. |
 | Plan mode | `ExitPlanMode` waits for approval and is not handled. Don't queue into a plan-mode session. |
 | Permission prompt (if not in bypass) | Does not end the turn, so no `Stop` fires |
-| Session closed | Items persist and resume next session |
+| Session closed or Claude restarted | Items persist on disk. The run does **not** auto-resume — send any message to start it again. |
 
 The interrupt case is the one that looks broken but isn't: the queue sits at its
 count indefinitely with nothing new in the log.

@@ -177,10 +177,17 @@ function handleEnqueue(payload, cwd) {
 /* How long after the last delivery a run still counts as in progress. */
 const RUN_ACTIVE_MS = 10 * 60 * 1000;
 
+/*
+ * "Running" means an item was delivered recently — NOT merely that items are
+ * waiting. A queue can sit pending for hours (queued then left, or a restart
+ * mid-run), and during that time the session is just an ordinary chat that
+ * must keep its ability to ask questions.
+ *
+ * A pop is what starts the clock, so this is true from the first delivery
+ * until RUN_ACTIVE_MS after the last one, covering the final item as it runs.
+ */
 function queueIsRunning(state) {
   if (state.paused) return false;
-  if (state.items.length > 0) return true;
-  // The final item is still executing after the queue emptied.
   return (
     state.consecutiveBlocks > 0 &&
     Date.now() - (state.lastPopAt || 0) < RUN_ACTIVE_MS
@@ -329,6 +336,12 @@ function handleStatusline(payload) {
 
   if (state.paused) {
     parts.push(`${RED}⏸ ${waiting} queued (paused)${RESET}`);
+  } else if (waiting && !queueIsRunning(state)) {
+    // Items are waiting but nothing has been delivered recently — queued then
+    // left, or a restart mid-run. The queue only advances at the end of a turn,
+    // so it needs a nudge; saying "4/12" here would imply it was still moving.
+    parts.push(`${ORANGE}⏳ ${waiting} waiting${RESET}`);
+    parts.push(`${DIM}send any message to start${RESET}`);
   } else if (waiting) {
     const done = state.consecutiveBlocks || 0;
     const total = done + waiting;

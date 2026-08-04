@@ -275,16 +275,27 @@ check('empty queue prints nothing at all', statusline(), '');
 
 q.add(CWD, 'fix the header alignment');
 q.add(CWD, 'write the tests');
-check('shows progress out of the run total', statusline().includes('0/2'), true);
-check('  and what is up next', statusline().includes('next: fix the header'), true);
+
+// Queued but not started: a progress fraction would imply it was still moving.
+check('waiting queue says it needs a nudge',
+  statusline().includes('2 waiting') && statusline().includes('send any message'), true);
 
 // consecutiveBlocks doubles as "delivered this run", so the total grows with it.
 let s = q.load(CWD);
 s.consecutiveBlocks = 3;
 s.lastPopAt = Date.now() - 4 * 60 * 1000;
 q.save(CWD, s);
-check('counts delivered items into the total', statusline().includes('3/5'), true);
-check('  and shows time since the last delivery', statusline().includes('4m'), true);
+check('running queue shows progress', statusline().includes('3/5'), true);
+check('  and what is up next', statusline().includes('next: fix the header'), true);
+
+// Stale run (e.g. restarted hours ago) goes back to the nudge form.
+s = q.load(CWD);
+s.lastPopAt = Date.now() - 3 * 60 * 60 * 1000;
+q.save(CWD, s);
+check('stale run says it needs a nudge', statusline().includes('2 waiting'), true);
+s.lastPopAt = Date.now() - 4 * 60 * 1000;
+q.save(CWD, s);
+check('shows time since the last delivery', statusline().includes('4m'), true);
 
 q.setPaused(CWD, true);
 check('paused is called out', statusline().includes('paused'), true);
@@ -310,7 +321,19 @@ function pretool(tool = 'Bash') {
 }
 
 q.clear(CWD);
+
+// Items merely WAITING is not a run. A queue can sit pending for hours — after
+// a restart, or queued then left — and that session is an ordinary chat that
+// must keep its ability to ask questions.
 q.add(CWD, 'a queued task');
+check('queue pending but never started: questions still allowed',
+  pretool('AskUserQuestion'), '');
+
+// A delivery is what starts a run.
+let running = q.load(CWD);
+running.consecutiveBlocks = 1;
+running.lastPopAt = Date.now();
+q.save(CWD, running);
 
 // Ordinary tools are never touched — whatever gate the session has is unchanged.
 check('ordinary tool during a run: not interfered with', pretool('Bash'), '');
@@ -341,6 +364,17 @@ check('final item still running: still denied',
 // Once a run is over, asking must work normally again.
 q.save(CWD, { ...q.emptyState(), consecutiveBlocks: 1, lastPopAt: Date.now() - 20 * 60 * 1000 });
 check('stale run: AskUserQuestion allowed again', pretool('AskUserQuestion'), '');
+
+// Restart mid-run: items survive, but the run is over until something is
+// delivered again — the session must not be left unable to ask questions.
+q.save(CWD, {
+  ...q.emptyState(),
+  items: [{ id: 'x', text: 'left over from before the restart' }],
+  consecutiveBlocks: 4,
+  lastPopAt: Date.now() - 3 * 60 * 60 * 1000,
+});
+check('restart with items pending: questions allowed', pretool('AskUserQuestion'), '');
+check('  and the items are still there', q.load(CWD).items.length, 1);
 
 q.clear(CWD);
 check('no queue at all: AskUserQuestion allowed', pretool('AskUserQuestion'), '');

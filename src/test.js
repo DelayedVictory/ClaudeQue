@@ -250,8 +250,14 @@ function cli(...args) {
 }
 
 q.clear(CWD);
-cli('add', 'alpha');
-cli('add', 'beta');
+
+// Starting a run via the CLI means it came through the busy path, which never
+// sees the enqueue hook — so the watcher must be requested here instead.
+const firstAdd = cli('add', 'alpha');
+check('first CLI add asks for the watcher', firstAdd.out.includes('ACTION REQUIRED'), true);
+check('  with the watch command', firstAdd.out.includes('watch "'), true);
+check('later adds do not ask again', cli('add', 'beta').out.includes('ACTION REQUIRED'), false);
+
 cli('add', 'gamma');
 check('add via CLI', q.load(CWD).items.length, 3);
 

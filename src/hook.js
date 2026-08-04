@@ -628,8 +628,23 @@ function handleCli(mode, cwd, argv) {
       process.exitCode = 1;
       return;
     }
+    const wasEmpty = state.items.length === 0;
     q.add(cwd, text);
     console.log(`Queued #${state.items.length + 1}: ${preview(text)}`);
+
+    /*
+     * Starting a run via the CLI means it came through the busy path — Claude
+     * ran this itself because the message bypassed hooks. That path never sees
+     * the enqueue hook, so the watcher would otherwise never start, and
+     * queueing while Claude is busy is the normal case.
+     */
+    if (wasEmpty && !watcherAlreadyRunning(cwd)) {
+      console.log(
+        `\nACTION REQUIRED: start the progress watcher as a BACKGROUND task ` +
+          `(Bash, run_in_background: true), then carry on:\n` +
+          `  node "${__filename.replace(/\\/g, '/')}" watch "${cwd.replace(/\\/g, '/')}"`
+      );
+    }
     return;
   }
 

@@ -164,8 +164,12 @@ Do this instead:
 
 1. Run, from the session's working directory:
    \`node "${HOOK}" add "<everything after the colon>"\`
-2. Reply with one short line — e.g. \`Queued (3 waiting).\`
-3. **Continue whatever you were doing**, as if the message had not arrived. Do
+2. If that command prints **ACTION REQUIRED**, do exactly what it says — start
+   the watcher as a background task (\`run_in_background: true\`) so the user can
+   follow the run in the background-tasks panel. Do not wait for it or report
+   its output.
+3. Reply with one short line — e.g. \`Queued (3 waiting).\`
+4. **Continue whatever you were doing**, as if the message had not arrived. Do
    not change plans, do not start the queued task, do not ask about it.
 
 A \`Stop\` hook delivers queued items one at a time once the current turn ends.

@@ -68,6 +68,22 @@ que: something 1
 que: something 2
 ```
 
+### Watching a run
+
+A long queue shows its progress in Claude Code's status line, so you can see
+where it is without opening a terminal:
+
+```
+⏳ 4/12 · 3m · next: update the changelog
+```
+
+Delivered out of the run total, how long the current item has been going, and
+what's up next. Paused queues and parked tasks show there too. It refreshes
+every 10 seconds, and prints nothing at all when there's no queue.
+
+If you already have a status line, the installer leaves it alone and tells you
+how to call ClaudeQue's from your own script.
+
 ### From the terminal
 
 Acts on the queue for the current directory:
@@ -153,6 +169,8 @@ Three hooks in `~/.claude/settings.json`, all running `src/hook.js`:
 | `UserPromptSubmit` | `enqueue` | Catches `que:` when Claude is **idle** and files it |
 | `Stop` | `stop` | Fires at true end-of-turn; pops one item and injects it |
 | `PreToolUse` | `pretool` | Denies `AskUserQuestion` while a queue is draining |
+
+Plus a `statusLine` entry running `statusline`, which renders queue progress.
 
 Delivery returns `{"decision":"block","reason":"<task>"}`. In the hook API
 `block` means *don't stop yet* — it blocks the stop, not your prompt, and

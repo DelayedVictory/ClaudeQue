@@ -41,6 +41,7 @@ check('  one PreToolUse hook', ourHooks('PreToolUse').length, 1);
 check('  path is absolute and forward-slashed',
   /^node "[A-Za-z]:\/.*\/src\/hook\.js" stop$/.test(settings().hooks.Stop[0].hooks[0].command), true);
 check('writes the busy rule', fs.readFileSync(CLAUDE_MD, 'utf8').includes('que:'), true);
+check('installs the status line', /claudeque/i.test(JSON.stringify(settings().statusLine)), true);
 
 // --- re-running must not duplicate
 run();
@@ -66,6 +67,21 @@ check('foreign Stop hook survives',
   settings().hooks.Stop.some((e) => JSON.stringify(e).includes('somebody-elses-hook')), true);
 check('foreign event survives', !!settings().hooks.PreToolUse, true);
 check('unrelated settings survive', settings().permissions.allow, ['Bash(ls:*)']);
+
+// statusLine is a single field, not a list — overwriting someone's existing
+// status line would silently destroy their config.
+const mine = { type: 'command', command: 'my-own-statusline.sh' };
+const s2 = settings();
+s2.statusLine = mine;
+fs.writeFileSync(SETTINGS, JSON.stringify(s2, null, 2));
+run();
+check('an existing status line is never overwritten', settings().statusLine, mine);
+check('  and the installer says it skipped', run().stdout.includes('skipped'), true);
+run('--uninstall');
+check('  uninstall leaves it alone too', settings().statusLine, mine);
+delete s2.statusLine;
+fs.writeFileSync(SETTINGS, JSON.stringify(s2, null, 2));
+run();
 check('user CLAUDE.md content survives',
   fs.readFileSync(CLAUDE_MD, 'utf8').includes('Keep me.'), true);
 check('  and ours is still there once',
@@ -89,6 +105,7 @@ check('user CLAUDE.md content still there',
   fs.readFileSync(CLAUDE_MD, 'utf8').includes('Keep me.'), true);
 check('our rule is gone',
   fs.readFileSync(CLAUDE_MD, 'utf8').includes('BEGIN ClaudeQue'), false);
+check('our status line is gone', settings().statusLine, undefined);
 
 // --- a corrupt settings file must never be overwritten
 const corrupt = '{ this is not json';

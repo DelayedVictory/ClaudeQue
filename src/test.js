@@ -259,6 +259,45 @@ cli('clear');
 check('clear empties', q.load(CWD).items.length, 0);
 check('unknown command exits non-zero', cli('flibble').code, 1);
 
+// ---------------------------------------------------------------- statusline
+
+function statusline(dir = CWD) {
+  const r = spawnSync(process.execPath, [HOOK, 'statusline'], {
+    input: JSON.stringify({ workspace: { current_dir: dir } }),
+    encoding: 'utf8',
+  });
+  return r.stdout.replace(/\x1b\[[0-9;]*m/g, ''); // strip ANSI for assertions
+}
+
+q.clear(CWD);
+q.clearParked(CWD);
+check('empty queue prints nothing at all', statusline(), '');
+
+q.add(CWD, 'fix the header alignment');
+q.add(CWD, 'write the tests');
+check('shows progress out of the run total', statusline().includes('0/2'), true);
+check('  and what is up next', statusline().includes('next: fix the header'), true);
+
+// consecutiveBlocks doubles as "delivered this run", so the total grows with it.
+let s = q.load(CWD);
+s.consecutiveBlocks = 3;
+s.lastPopAt = Date.now() - 4 * 60 * 1000;
+q.save(CWD, s);
+check('counts delivered items into the total', statusline().includes('3/5'), true);
+check('  and shows time since the last delivery', statusline().includes('4m'), true);
+
+q.setPaused(CWD, true);
+check('paused is called out', statusline().includes('paused'), true);
+check('  and hides next-item detail', statusline().includes('next:'), false);
+q.setPaused(CWD, false);
+
+q.clear(CWD);
+q.park(CWD, 'blocked thing', 'which database?');
+check('parked shows even with an empty queue', statusline().includes('1 parked'), true);
+q.clearParked(CWD);
+
+check('unknown project prints nothing', statusline(path.join(CWD, 'nope')), '');
+
 // ---------------------------------------------------------------- pretool
 
 function pretool(tool = 'Bash') {

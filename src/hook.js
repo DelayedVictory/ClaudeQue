@@ -292,6 +292,60 @@ function handleStop(payload, cwd) {
   emit(injection(item.text));
 }
 
+// ---------------------------------------------------------------- statusline
+
+/*
+ * Renders queue progress in Claude Code's status line, so a long run is
+ * visible without opening a terminal.
+ *
+ * `consecutiveBlocks` doubles as the count delivered in the current run: it
+ * increments on every pop and resets when the queue empties, so done + waiting
+ * gives the run total without storing it separately.
+ */
+const DIM = '\x1b[2m';
+const ORANGE = '\x1b[38;5;209m';
+const RED = '\x1b[38;5;167m';
+const RESET = '\x1b[0m';
+
+function ago(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60}m`;
+}
+
+function handleStatusline(payload) {
+  const cwd = (payload.workspace && payload.workspace.current_dir) || payload.cwd;
+  if (!cwd) return;
+
+  const state = q.load(cwd);
+  const waiting = state.items.length;
+  const parked = q.loadParked(cwd).length;
+
+  // Nothing to report — stay out of the way entirely.
+  if (!waiting && !parked) return;
+
+  const parts = [];
+
+  if (state.paused) {
+    parts.push(`${RED}⏸ ${waiting} queued (paused)${RESET}`);
+  } else if (waiting) {
+    const done = state.consecutiveBlocks || 0;
+    const total = done + waiting;
+    parts.push(`${ORANGE}⏳ ${done}/${total}${RESET}`);
+
+    if (state.lastPopAt) parts.push(`${DIM}${ago(Date.now() - state.lastPopAt)}${RESET}`);
+
+    // What is running right now is the item popped last, which is no longer in
+    // the queue — so show what is up next instead, which is in it.
+    parts.push(`${DIM}next: ${preview(state.items[0].text, 45)}${RESET}`);
+  }
+
+  if (parked) parts.push(`${RED}⚑ ${parked} parked${RESET}`);
+
+  process.stdout.write(parts.join(` ${DIM}·${RESET} `));
+}
+
 // ---------------------------------------------------------------- cli
 
 function handleCli(mode, cwd, argv) {
@@ -421,7 +475,7 @@ function main() {
 
   const cliModes = ['add', 'list', 'clear', 'pause', 'resume', 'remove',
     'edit', 'move', 'park', 'parked', 'unpark'];
-  const hookModes = ['stop', 'enqueue', 'pretool'];
+  const hookModes = ['stop', 'enqueue', 'pretool', 'statusline'];
 
   if (cliModes.includes(mode)) {
     handleCli(mode, process.cwd(), process.argv);
@@ -454,6 +508,7 @@ function main() {
       cwd = payload.cwd || cwd;
       if (mode === 'stop') handleStop(payload, cwd);
       else if (mode === 'enqueue') handleEnqueue(payload, cwd);
+      else if (mode === 'statusline') handleStatusline(payload);
       else handlePreTool(payload, cwd);
     } catch (err) {
       if (err === THROWN_EXIT) return; // normal termination

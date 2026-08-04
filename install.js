@@ -106,8 +106,37 @@ function updateSettings() {
   }
   if (!Object.keys(settings.hooks).length) delete settings.hooks;
 
+  const statusLine = updateStatusLine(settings);
+
   writeJson(SETTINGS, settings);
-  return SETTINGS;
+  return statusLine;
+}
+
+// ---------------------------------------------------------------- statusline
+
+/*
+ * `statusLine` is a single field, not a list, so installing ours would silently
+ * replace whatever the user already had. Only ever set it if it is absent or
+ * already ours; otherwise leave it and say so.
+ */
+function updateStatusLine(settings) {
+  const current = settings.statusLine;
+  const isOurs = current && /claudeque/i.test(JSON.stringify(current));
+
+  if (uninstalling) {
+    if (isOurs) delete settings.statusLine;
+    return isOurs ? 'removed' : 'left alone';
+  }
+
+  if (current && !isOurs) return 'skipped (you already have one)';
+
+  settings.statusLine = {
+    type: 'command',
+    command: `node "${HOOK}" statusline`,
+    refreshInterval: 10,
+    padding: 0,
+  };
+  return 'installed';
 }
 
 // ---------------------------------------------------------------- CLAUDE.md
@@ -178,19 +207,25 @@ function updateClaudeMd() {
 // ---------------------------------------------------------------- main
 
 try {
-  const settingsPath = updateSettings();
+  const statusLine = updateSettings();
   const mdPath = updateClaudeMd();
 
   if (uninstalling) {
     console.log('ClaudeQue uninstalled.');
-    console.log(`  hooks removed from  ${settingsPath}`);
+    console.log(`  hooks removed from  ${SETTINGS}`);
+    console.log(`  status line         ${statusLine}`);
     if (mdPath) console.log(`  rule removed from   ${mdPath}`);
     console.log('\nQueue files under each project\'s .claude/claudeque/ were left alone.');
   } else {
     console.log('ClaudeQue installed.');
-    console.log(`  hooks     -> ${settingsPath}`);
-    console.log(`  busy rule -> ${mdPath}`);
-    console.log(`  engine    -> ${HOOK}`);
+    console.log(`  hooks       -> ${SETTINGS}`);
+    console.log(`  status line -> ${statusLine}`);
+    console.log(`  busy rule   -> ${mdPath}`);
+    console.log(`  engine      -> ${HOOK}`);
+    if (statusLine.startsWith('skipped')) {
+      console.log('\nTo show queue progress in your existing status line, call:');
+      console.log(`  node "${HOOK}" statusline`);
+    }
     console.log('\nRestart Claude Code, then type "que: something" in any project.');
     console.log('CLAUDE.md is only read at session start, so existing chats will');
     console.log('not pick up the rule until reopened.');

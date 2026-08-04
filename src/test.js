@@ -302,6 +302,17 @@ check('paused is called out', statusline().includes('paused'), true);
 check('  and hides next-item detail', statusline().includes('next:'), false);
 q.setPaused(CWD, false);
 
+// The queue empties before the last item finishes — the longest unattended
+// stretch of a run, and the worst moment to show nothing.
+q.save(CWD, { ...q.emptyState(), consecutiveBlocks: 4, lastPopAt: Date.now() - 6 * 60 * 1000 });
+check('last item running is still reported', statusline().includes('4/4'), true);
+check('  with elapsed time', statusline().includes('6m'), true);
+check('  and says what it is doing', statusline().includes('last item running'), true);
+
+// Once that run goes stale, fall silent again.
+q.save(CWD, { ...q.emptyState(), consecutiveBlocks: 4, lastPopAt: Date.now() - 3 * 60 * 60 * 1000 });
+check('finished run prints nothing', statusline(), '');
+
 q.clear(CWD);
 q.park(CWD, 'blocked thing', 'which database?');
 check('parked shows even with an empty queue', statusline().includes('1 parked'), true);

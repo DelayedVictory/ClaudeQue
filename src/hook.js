@@ -328,15 +328,26 @@ function handleStatusline(payload) {
   const state = q.load(cwd);
   const waiting = state.items.length;
   const parked = q.loadParked(cwd).length;
+  const running = queueIsRunning(state);
 
   // Nothing to report — stay out of the way entirely.
-  if (!waiting && !parked) return;
+  if (!waiting && !parked && !running) return;
 
   const parts = [];
 
   if (state.paused) {
     parts.push(`${RED}⏸ ${waiting} queued (paused)${RESET}`);
-  } else if (waiting && !queueIsRunning(state)) {
+  } else if (!waiting && running) {
+    /*
+     * The queue has emptied but the last item is still being worked on. This is
+     * the longest unattended stretch of a run, so it is the worst possible
+     * moment to show nothing at all.
+     */
+    const done = state.consecutiveBlocks || 0;
+    parts.push(`${ORANGE}⏳ ${done}/${done}${RESET}`);
+    parts.push(`${DIM}${ago(Date.now() - state.lastPopAt)}${RESET}`);
+    parts.push(`${DIM}last item running${RESET}`);
+  } else if (waiting && !running) {
     // Items are waiting but nothing has been delivered recently — queued then
     // left, or a restart mid-run. The queue only advances at the end of a turn,
     // so it needs a nudge; saying "4/12" here would imply it was still moving.

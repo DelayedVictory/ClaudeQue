@@ -488,10 +488,6 @@ function handleWatch(cwd, force) {
   process.on('SIGINT', () => process.exit(0));
   process.on('SIGTERM', () => process.exit(0));
 
-  let lastSignature = null;
-  let delivered = 0;
-  let quietSince = null;
-
   console.log(`ClaudeQue watching ${cwd}`);
   console.log('Streaming queue progress. Exits when the queue is done.\n');
 
@@ -510,6 +506,11 @@ function handleWatch(cwd, force) {
     console.log('');
   }
 
+  let lastSignature = null;
+  let lastParked = parkedAtStart.length;
+  let delivered = 0;
+  let quietSince = null;
+
   const tick = () => {
     touchLock();
     const state = q.load(cwd);
@@ -519,7 +520,17 @@ function handleWatch(cwd, force) {
 
     // Signature changes only on a real transition, so the log stays quiet
     // during the minutes a single item takes.
-    const signature = `${waiting}|${done}|${state.paused}|${parked}`;
+    /*
+     * Report a park only when the count CHANGES. Including it in the delivery
+     * line meant "2 parked" reprinted on every single item — 33 times in one
+     * run — burying the fact that something new had been parked.
+     */
+    if (parked !== lastParked) {
+      lastParked = parked;
+      console.log(`[${stamp()}] ${parked} parked - awaiting your decision`);
+    }
+
+    const signature = `${waiting}|${done}|${state.paused}`;
     if (signature !== lastSignature) {
       lastSignature = signature;
 
@@ -536,9 +547,6 @@ function handleWatch(cwd, force) {
           : `next: ${preview(state.items[0].text, 60)}`;
         console.log(`[${stamp()}] ${done}/${total} - ${label}`);
         delivered = done;
-      }
-      if (parked) {
-        console.log(`[${stamp()}] ${parked} parked - awaiting your decision`);
       }
     }
 

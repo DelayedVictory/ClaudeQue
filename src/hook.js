@@ -435,10 +435,38 @@ function watcherAlreadyRunning(cwd) {
   }
 }
 
-function handleWatch(cwd) {
-  if (watcherAlreadyRunning(cwd)) {
-    console.log('A ClaudeQue watcher is already running for this project.');
+/*
+ * Restarting Claude Code leaves any background task it started running as an
+ * orphan: the process survives, but its panel entry is gone. The orphan keeps
+ * heartbeating the lock, so no new — visible — watcher can start, and the run
+ * looks unmonitored. Taking over means killing it first, otherwise two
+ * watchers poll the same queue and only one is on screen.
+ */
+function takeOverFrom(cwd) {
+  let pid;
+  try {
+    pid = Number(fs.readFileSync(watchLock(cwd), 'utf8').trim());
+  } catch {
     return;
+  }
+  if (!pid || pid === process.pid) return;
+  try {
+    process.kill(pid);
+    console.log(`Replaced an earlier watcher (pid ${pid}) that was no longer visible.`);
+  } catch {
+    /* already gone */
+  }
+}
+
+function handleWatch(cwd, force) {
+  if (watcherAlreadyRunning(cwd)) {
+    if (!force) {
+      console.log('A ClaudeQue watcher is already running for this project.');
+      console.log('If it is not visible (e.g. Claude Code was restarted since),');
+      console.log('re-run with --force to take over.');
+      return;
+    }
+    takeOverFrom(cwd);
   }
 
   const touchLock = () => {
@@ -467,6 +495,21 @@ function handleWatch(cwd) {
   console.log(`ClaudeQue watching ${cwd}`);
   console.log('Streaming queue progress. Exits when the queue is done.\n');
 
+  /*
+   * Surface anything already parked at startup. A parked task is a question
+   * waiting on the user, and it is otherwise silent — the run carries on
+   * without it, so nothing ever prompts them to look.
+   */
+  const parkedAtStart = q.loadParked(cwd);
+  if (parkedAtStart.length) {
+    console.log(`${parkedAtStart.length} task(s) parked and awaiting your decision:`);
+    parkedAtStart.forEach((it, i) => {
+      console.log(`  ${i + 1}. ${preview(it.text, 90)}`);
+      console.log(`     needs: ${preview(it.reason, 120)}`);
+    });
+    console.log('');
+  }
+
   const tick = () => {
     touchLock();
     const state = q.load(cwd);
@@ -494,7 +537,9 @@ function handleWatch(cwd) {
         console.log(`[${stamp()}] ${done}/${total} - ${label}`);
         delivered = done;
       }
-      if (parked) console.log(`[${stamp()}] ${parked} parked`);
+      if (parked) {
+        console.log(`[${stamp()}] ${parked} parked - awaiting your decision`);
+      }
     }
 
     const idle = !waiting && !queueIsRunning(state);
@@ -658,7 +703,9 @@ function main() {
   const mode = process.argv[2];
 
   if (mode === 'watch') {
-    handleWatch(process.argv[3] || process.cwd());
+    const args = process.argv.slice(3);
+    const force = args.includes('--force');
+    handleWatch(args.find((a) => !a.startsWith('--')) || process.cwd(), force);
     return;
   }
 
@@ -680,7 +727,7 @@ function main() {
     console.error(
       `Unknown command: ${mode || '(none)'}\n\n` +
         `Queue:  ${cliModes.join(' | ')}\n` +
-        `Watch:  watch [projectDir]  (run as a background task)\n` +
+        `Watch:  watch [projectDir] [--force]  (run as a background task)\n` +
         `Hooks:  ${hookModes.join(' | ')}  (invoked by Claude Code, not by hand)`
     );
     process.exitCode = 1;

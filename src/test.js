@@ -283,6 +283,36 @@ cli('clear');
 check('clear empties', q.load(CWD).items.length, 0);
 check('unknown command exits non-zero', cli('flibble').code, 1);
 
+// ---------------------------------------------------------------- watch
+
+function watchOnce(extraArgs = []) {
+  // Runs one tick then exits via the quiet path, so the startup output can be
+  // asserted without leaving a process behind.
+  const r = spawnSync(process.execPath, [HOOK, 'watch', CWD, ...extraArgs], {
+    encoding: 'utf8',
+    timeout: 4000,
+  });
+  return r.stdout;
+}
+
+q.clear(CWD);
+q.clearParked(CWD);
+try {
+  fs.unlinkSync(path.join(q.stateDir(CWD), 'watch.lock'));
+} catch {
+  /* none */
+}
+
+// A parked task is a question waiting on the user, and it is otherwise silent:
+// the run carries on without it, so nothing prompts them to look.
+q.park(CWD, 'the withered plant rule', 'which of the three options do you want?');
+const started = watchOnce();
+check('watch surfaces parked tasks at startup',
+  started.includes('awaiting your decision'), true);
+check('  and names the task', started.includes('the withered plant rule'), true);
+check('  and what it needs', started.includes('which of the three options'), true);
+q.clearParked(CWD);
+
 // ---------------------------------------------------------------- statusline
 
 function statusline(dir = CWD) {

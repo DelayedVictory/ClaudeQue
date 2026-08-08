@@ -273,6 +273,25 @@ check('edit rewrites an item', q.load(CWD).items[1].text, 'alpha revised');
 check('edit rejects blank text', cli('edit', '2', '   ').code, 1);
 check('edit rejects out of range', cli('edit', '9', 'x').code, 1);
 
+// An item is popped before it is handed to Claude, so a turn that dies to a
+// rate limit or an interrupt takes its task with it. requeue-last puts it back.
+q.clear(CWD);
+check('nothing to requeue on a fresh queue', cli('requeue-last').out.includes('Nothing to requeue'), true);
+
+q.add(CWD, 'survivor');
+let interrupted = q.load(CWD);
+interrupted.lastItem = 'the task that died mid-run';
+q.save(CWD, interrupted);
+cli('requeue-last');
+check('requeues to the FRONT', q.load(CWD).items[0].text, 'the task that died mid-run');
+check('  without disturbing the rest', q.load(CWD).items[1].text, 'survivor');
+check('  and refuses to double-add', cli('requeue-last').out.includes('Already at the front'), true);
+check('  so the queue is unchanged', q.load(CWD).items.length, 2);
+
+q.clear(CWD);
+cli('add', 'alpha');
+cli('add', 'beta');
+cli('add', 'gamma');
 cli('remove', '1');
 check('remove drops one', q.load(CWD).items.length, 2);
 cli('pause');

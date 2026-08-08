@@ -102,6 +102,7 @@ node src/hook.js add "write tests for the parser"
 node src/hook.js edit 2 "revised wording"
 node src/hook.js move 3 up
 node src/hook.js remove 2
+node src/hook.js requeue-last   # put an interrupted task back at the front
 node src/hook.js pause
 node src/hook.js resume
 node src/hook.js clear
@@ -159,12 +160,22 @@ to ask, which is worth skimming after a long run.
 | Queue empties | Hook returns `{}`, Claude stops normally |
 | `pause` | Stops after the current item; items are held |
 | **You interrupt the turn** (Esc) | `Stop` does not fire on interrupt, so the queue freezes. Send any message to resume. |
+| Rate limit or crash mid-task | Same as an interrupt: the turn dies abnormally, no `Stop` fires, and the queue waits. Send any message once it clears. |
 | Plan mode | `ExitPlanMode` waits for approval and is not handled. Don't queue into a plan-mode session. |
 | Permission prompt (if not in bypass) | Does not end the turn, so no `Stop` fires |
 | Session closed or Claude restarted | Items persist on disk. The run does **not** auto-resume — send any message to start it again. |
 
 The interrupt case is the one that looks broken but isn't: the queue sits at its
 count indefinitely with nothing new in the log.
+
+**The task that was running is not retried.** An item is popped *before* it is
+handed to Claude, so a turn that dies takes its task out of the queue with it —
+the run resumes at the next item and that one silently never completes. To put
+it back at the front:
+
+```bash
+node src/hook.js requeue-last
+```
 
 ---
 

@@ -13,6 +13,7 @@
  * CLI (acts on the queue for the current directory):
  *   node src/hook.js add "text" | list | edit <n> "text" | move <n> <up|down>
  *   node src/hook.js remove <n> | pause | resume | clear | parked | unpark
+ *   node src/hook.js requeue-last   put an interrupted task back at the front
  */
 
 const crypto = require('crypto');
@@ -592,6 +593,27 @@ function handleCli(mode, cwd, argv) {
     return;
   }
 
+  /*
+   * An item is popped BEFORE it is handed to Claude, so a turn that ends
+   * abnormally — a rate limit, an interrupt, a crash — takes its task with it:
+   * the queue resumes at the next item and that one silently never completes.
+   * Recorded in lastItem precisely so it can be put back.
+   */
+  if (mode === 'requeue-last') {
+    if (!state.lastItem) {
+      console.log('Nothing to requeue - no item has been delivered yet.');
+      return;
+    }
+    if (state.items[0] && state.items[0].text === state.lastItem) {
+      console.log('Already at the front of the queue - nothing to do.');
+      return;
+    }
+    q.add(cwd, state.lastItem, { front: true });
+    console.log(`Requeued at the front: ${preview(state.lastItem)}`);
+    console.log(`${q.load(cwd).items.length} now waiting.`);
+    return;
+  }
+
   if (mode === 'park') {
     const item = q.park(cwd, argv[3], argv[4]);
     if (!item) {
@@ -718,7 +740,7 @@ function main() {
   }
 
   const cliModes = ['add', 'list', 'clear', 'pause', 'resume', 'remove',
-    'edit', 'move', 'park', 'parked', 'unpark'];
+    'edit', 'move', 'requeue-last', 'park', 'parked', 'unpark'];
   const hookModes = ['stop', 'enqueue', 'pretool', 'statusline'];
 
   if (cliModes.includes(mode)) {

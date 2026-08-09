@@ -136,11 +136,18 @@ function newId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function add(cwd, text, { front = false } = {}) {
+/*
+ * `resumed` marks a task that was already started once and interrupted. It
+ * travels with the item so that whenever it is eventually delivered — which
+ * may be much later — Claude is told to check what was already done rather
+ * than starting over.
+ */
+function add(cwd, text, { front = false, resumed = false } = {}) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
   const state = load(cwd);
   const item = { id: newId(), text: trimmed, addedAt: new Date().toISOString() };
+  if (resumed) item.resumed = true;
   if (front) state.items.unshift(item);
   else state.items.push(item);
   save(cwd, state);

@@ -71,11 +71,25 @@ function emit(obj) {
 }
 
 /*
+ * A resumed task was already started once and cut short by a rate limit, an
+ * interrupt or a crash, so some of the work may exist already. Redoing it
+ * blindly can duplicate edits; ignoring that risk is worse than the cost of
+ * one look at the current state.
+ */
+const RESUMED_NOTE =
+  'NOTE: this task was INTERRUPTED partway through and is being resumed, so ' +
+  'part of it may already be done.\n' +
+  'Before changing anything, check the current state — `git status`, ' +
+  '`git diff`, and the files this task touches — and continue from where it ' +
+  'got to rather than starting over. Say briefly what you found already done.\n\n';
+
+/*
  * `block` is the hook API's word for "do not stop yet" — it blocks the stop,
  * not the prompt, and `reason` becomes Claude's next instruction.
  */
-function injection(text) {
-  return { decision: 'block', reason: PREFIX + text };
+function injection(item) {
+  const body = (item.resumed ? RESUMED_NOTE : '') + item.text;
+  return { decision: 'block', reason: PREFIX + body };
 }
 
 function preview(text, n = 60) {
@@ -319,7 +333,7 @@ function handleStop(payload, cwd) {
     injected: preview(item.text),
   });
 
-  emit(injection(item.text));
+  emit(injection(item));
 }
 
 // ---------------------------------------------------------------- statusline
@@ -579,7 +593,9 @@ function handleCli(mode, cwd, argv) {
       console.log('Queue is empty.');
     } else {
       state.items.forEach((it, i) =>
-        console.log(`${String(i + 1).padStart(2)}. ${preview(it.text, 100)}`)
+        console.log(
+          `${String(i + 1).padStart(2)}. ${it.resumed ? '[resumed] ' : ''}${preview(it.text, 100)}`
+        )
       );
       console.log(`\n${state.items.length} queued.`);
     }
@@ -608,8 +624,9 @@ function handleCli(mode, cwd, argv) {
       console.log('Already at the front of the queue - nothing to do.');
       return;
     }
-    q.add(cwd, state.lastItem, { front: true });
+    q.add(cwd, state.lastItem, { front: true, resumed: true });
     console.log(`Requeued at the front: ${preview(state.lastItem)}`);
+    console.log('Marked as resumed - Claude will check what was already done first.');
     console.log(`${q.load(cwd).items.length} now waiting.`);
     return;
   }

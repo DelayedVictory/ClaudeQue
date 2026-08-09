@@ -177,6 +177,11 @@ it back at the front:
 node src/hook.js requeue-last
 ```
 
+It comes back flagged `[resumed]`, and the flag travels with it until delivery.
+When it eventually runs, Claude is told the task was interrupted and to check
+`git status`, `git diff` and the files involved before changing anything — so
+partly-finished work is continued rather than redone.
+
 ---
 
 ## How it works

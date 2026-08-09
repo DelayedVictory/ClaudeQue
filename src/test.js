@@ -285,6 +285,30 @@ q.save(CWD, interrupted);
 cli('requeue-last');
 check('requeues to the FRONT', q.load(CWD).items[0].text, 'the task that died mid-run');
 check('  without disturbing the rest', q.load(CWD).items[1].text, 'survivor');
+check('  flagged as resumed', q.load(CWD).items[0].resumed, true);
+check('  and shown as such', cli('list').out.includes('[resumed]'), true);
+
+// The flag must survive until delivery, however much later that is, and change
+// the instruction so the work is not blindly redone.
+const resumedDelivery = JSON.parse(stop({ last_assistant_message: 'rR' }));
+check('a resumed task says it was interrupted',
+  resumedDelivery.reason.includes('INTERRUPTED partway through'), true);
+check('  and says to check current state first',
+  resumedDelivery.reason.includes('git diff'), true);
+check('  while still carrying the task itself',
+  resumedDelivery.reason.includes('the task that died mid-run'), true);
+
+// A normal task must not carry the note.
+const normalDelivery = JSON.parse(stop({ last_assistant_message: 'rN' }));
+check('a normal task has no resumed note',
+  normalDelivery.reason.includes('INTERRUPTED'), false);
+
+q.clear(CWD);
+q.add(CWD, 'survivor');
+interrupted = q.load(CWD);
+interrupted.lastItem = 'the task that died mid-run';
+q.save(CWD, interrupted);
+cli('requeue-last');
 check('  and refuses to double-add', cli('requeue-last').out.includes('Already at the front'), true);
 check('  so the queue is unchanged', q.load(CWD).items.length, 2);
 

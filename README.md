@@ -141,6 +141,26 @@ The trade is real: item 5 now completes on an assumption instead of waiting.
 `deny-question` entries in `.claude/claudeque/debug.log` record what it wanted
 to ask, which is worth skimming after a long run.
 
+### Follow-up work
+
+When the last task of a run completes, Claude is asked once whether anything
+should follow — suggested tasks it flagged, things noticed in passing, work
+left unfinished — and queues them if so.
+
+It is explicitly allowed to answer "nothing outstanding", because a model asked
+to find work will find some. Padding the queue with make-work is worse than
+ending it.
+
+It cannot chain: tasks a wrap-up produced are marked, and delivering one does
+not arm another wrap-up, so a queue cannot grow indefinitely overnight. Only
+ordinary work re-arms it.
+
+Set `CLAUDEQUE_NO_WRAPUP=1` to switch it off.
+
+> Suggested-task **chips** are not readable from disk — `~/.claude/tasks/` holds
+> the todo list, not the chips — which is why this asks Claude rather than
+> reading them. Claude has its own suggestions in context.
+
 ---
 
 ## Behaviour

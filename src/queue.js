@@ -29,6 +29,8 @@ function emptyState() {
     // has left the queue, so it cannot otherwise be named — and the last item
     // of a run has nothing after it to report instead.
     lastItem: null,
+    // One end-of-run wrap-up per run; see handleStop.
+    wrapUpDone: false,
   };
 }
 
@@ -100,6 +102,7 @@ function load(cwd) {
       lastTurnKey: parsed.lastTurnKey || null,
       lastPopAt: parsed.lastPopAt || 0,
       lastItem: parsed.lastItem || null,
+      wrapUpDone: !!parsed.wrapUpDone,
     };
   } catch {
     return emptyState();
@@ -142,12 +145,14 @@ function newId() {
  * may be much later — Claude is told to check what was already done rather
  * than starting over.
  */
-function add(cwd, text, { front = false, resumed = false } = {}) {
+function add(cwd, text, { front = false, resumed = false, fromWrapUp = false } = {}) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
   const state = load(cwd);
   const item = { id: newId(), text: trimmed, addedAt: new Date().toISOString() };
   if (resumed) item.resumed = true;
+  // Marks follow-up work a wrap-up produced, so it cannot trigger another one.
+  if (fromWrapUp) item.fromWrapUp = true;
   if (front) state.items.unshift(item);
   else state.items.push(item);
   save(cwd, state);

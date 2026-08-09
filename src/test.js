@@ -96,9 +96,17 @@ check('third pop is item three', s3.reason.includes('third task'), true);
 // being worked on cannot be named — especially the last one of a run.
 check('the running item is recorded', q.load(CWD).lastItem, 'third task');
 
+// Emptying the queue ends the run, which asks once whether anything should
+// follow; only after that does Claude get to stop.
 check(
-  'empty queue returns {}',
-  stop({ stop_hook_active: true, last_assistant_message: 'r4' }),
+  'emptying asks for a wrap-up first',
+  JSON.parse(stop({ stop_hook_active: true, last_assistant_message: 'r4' }))
+    .reason.includes('queue is now empty'),
+  true
+);
+check(
+  'empty queue then returns {}',
+  stop({ stop_hook_active: true, last_assistant_message: 'r5' }),
   '{}'
 );
 
@@ -213,6 +221,44 @@ check('  body A keeps its second line', q.load(CWD).items[0].text, 'task A\n  co
 check('  body B', q.load(CWD).items[1].text, 'task B');
 
 check('bare trigger with no text passes through', enqueue('que:'), '');
+q.clear(CWD);
+
+// ---------------------------------------------------------------- wrap-up
+
+q.clear(CWD);
+q.add(CWD, 'the only task');
+JSON.parse(stop({ last_assistant_message: 'w1' })); // deliver it
+const wrap = JSON.parse(stop({ last_assistant_message: 'w2' }));
+check('an emptied queue asks what should follow',
+  wrap.reason.includes('The queue is now empty'), true);
+check('  and permits an empty answer',
+  wrap.reason.includes('Do NOT invent work'), true);
+check('  offering the --wrapup flag', wrap.reason.includes('--wrapup'), true);
+
+// Exactly once: a second stop with nothing new must let Claude finish.
+check('it does not ask twice', stop({ last_assistant_message: 'w3' }), '{}');
+
+// Follow-ups a wrap-up produced must not trigger another wrap-up, or the
+// queue could grow indefinitely overnight.
+q.add(CWD, 'follow-up work', { fromWrapUp: true });
+JSON.parse(stop({ last_assistant_message: 'w4' })); // deliver the follow-up
+check('a wrap-up follow-up does not re-arm it', stop({ last_assistant_message: 'w5' }), '{}');
+
+// Ordinary work does re-arm it, so the next real run gets its own wrap-up.
+q.add(CWD, 'genuinely new work');
+JSON.parse(stop({ last_assistant_message: 'w6' }));
+check('ordinary work re-arms it',
+  JSON.parse(stop({ last_assistant_message: 'w7' })).reason.includes('queue is now empty'), true);
+
+// An empty queue that never ran must stay silent.
+q.clear(CWD);
+check('no run, no wrap-up', stop({ last_assistant_message: 'w8' }), '{}');
+
+// The --wrapup flag must survive the CLI.
+q.clear(CWD);
+spawnSync(process.execPath, [HOOK, 'add', 'from a wrap-up', '--wrapup'], { cwd: CWD });
+check('--wrapup marks the item', q.load(CWD).items[0].fromWrapUp, true);
+check('  and is not part of the text', q.load(CWD).items[0].text, 'from a wrap-up');
 q.clear(CWD);
 
 // ---------------------------------------------------------------- parking

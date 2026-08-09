@@ -84,6 +84,29 @@ const RESUMED_NOTE =
   'got to rather than starting over. Say briefly what you found already done.\n\n';
 
 /*
+ * Fired once when a run's last task completes. Suggested-task chips are not
+ * readable from disk — only the todo list is — but Claude has its own
+ * suggestions in context, so asking is the way to reach them.
+ *
+ * The explicit permission to answer "nothing" matters: without it Claude
+ * invents work to look useful, and a queue that refills itself with
+ * manufactured tasks is worse than one that ends.
+ */
+function wrapUpTask(delivered) {
+  return (
+    `The queue is now empty — ${delivered} task${delivered === 1 ? '' : 's'} delivered.\n\n` +
+    'Before this run finishes, review it: anything you flagged as a suggested ' +
+    'task, noticed in passing and set aside, or left unfinished.\n\n' +
+    'If there is outstanding work worth doing now, queue each item:\n' +
+    `  node "${__filename.replace(/\\/g, '/')}" add "<the task>" --wrapup\n` +
+    'Then reply with one line saying how many you queued.\n\n' +
+    'If there is nothing outstanding, say so in one line and stop. Do NOT ' +
+    'invent work — "nothing outstanding" is a good answer, and padding the ' +
+    'queue with make-work is worse than ending it.'
+  );
+}
+
+/*
  * `block` is the hook API's word for "do not stop yet" — it blocks the stop,
  * not the prompt, and `reason` becomes Claude's next instruction.
  */
@@ -303,6 +326,25 @@ function handleStop(payload, cwd) {
   }
 
   if (state.paused || before === 0) {
+    /*
+     * A run just finished. Ask once whether anything should follow it.
+     * wrapUpDone is cleared only by delivering an item that did NOT come from
+     * a wrap-up, so a wrap-up cannot chain into another one and grow the queue
+     * indefinitely while nobody is watching.
+     */
+    const runFinished = !state.paused && state.consecutiveBlocks > 0;
+    if (runFinished && !state.wrapUpDone && !process.env.CLAUDEQUE_NO_WRAPUP) {
+      state.wrapUpDone = true;
+      q.save(cwd, state);
+      q.log(cwd, {
+        event: 'stop',
+        session: payload.session_id,
+        action: 'wrap-up',
+        delivered: state.consecutiveBlocks,
+      });
+      emit({ decision: 'block', reason: wrapUpTask(state.consecutiveBlocks) });
+    }
+
     q.log(cwd, {
       event: 'stop',
       session: payload.session_id,
@@ -321,6 +363,9 @@ function handleStop(payload, cwd) {
   state.lastTurnKey = turnKey;
   state.lastPopAt = Date.now();
   state.lastItem = item.text;
+  // Only real work re-arms the wrap-up; tasks a wrap-up produced do not, or
+  // each round of follow-ups would trigger another round.
+  if (!item.fromWrapUp) state.wrapUpDone = false;
   q.save(cwd, state);
 
   q.log(cwd, {
@@ -714,14 +759,15 @@ function handleCli(mode, cwd, argv) {
   }
 
   if (mode === 'add') {
-    const text = argv.slice(3).join(' ').trim();
+    const fromWrapUp = argv.includes('--wrapup');
+    const text = argv.slice(3).filter((a) => a !== '--wrapup').join(' ').trim();
     if (!text) {
-      console.error('Usage: node src/hook.js add "prompt text"');
+      console.error('Usage: node src/hook.js add "prompt text" [--wrapup]');
       process.exitCode = 1;
       return;
     }
     const wasEmpty = state.items.length === 0;
-    q.add(cwd, text);
+    q.add(cwd, text, { fromWrapUp });
     console.log(`Queued #${state.items.length + 1}: ${preview(text)}`);
 
     /*

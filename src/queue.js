@@ -50,6 +50,44 @@ function parkedPath(cwd) {
   return path.join(stateDir(cwd), 'parked.json');
 }
 
+function attachmentsDir(cwd) {
+  return path.join(stateDir(cwd), 'attachments');
+}
+
+/*
+ * Copy a file alongside the queue so a task can still reach it later.
+ *
+ * The queue is plain text, and a task may not run for hours — by which time
+ * whatever temp directory the original lived in may be gone. Copying makes the
+ * reference survive; the name is prefixed so two screenshots called the same
+ * thing cannot overwrite each other.
+ */
+function attach(cwd, sourcePath) {
+  const src = String(sourcePath || '').trim();
+  if (!src || !fs.existsSync(src) || fs.statSync(src).isDirectory()) return null;
+
+  const dir = attachmentsDir(cwd);
+  fs.mkdirSync(dir, { recursive: true });
+
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const safe = path.basename(src).replace(/[^\w.-]/g, '_');
+
+  /*
+   * The stamp is only second-resolution, so two screenshots attached in the
+   * same second would collide and the first would be silently overwritten.
+   * Suffix until the name is free.
+   */
+  const ext = path.extname(safe);
+  const stem = safe.slice(0, safe.length - ext.length);
+  let dest = path.join(dir, `${stamp}-${safe}`);
+  for (let n = 2; fs.existsSync(dest); n++) {
+    dest = path.join(dir, `${stamp}-${stem}-${n}${ext}`);
+  }
+
+  fs.copyFileSync(src, dest);
+  return dest;
+}
+
 /*
  * Tasks set aside because they genuinely could not proceed without an answer.
  * Parking keeps the rest of the queue moving instead of one blocked item
@@ -211,6 +249,8 @@ module.exports = {
   loadParked,
   park,
   clearParked,
+  attachmentsDir,
+  attach,
   load,
   save,
   log,

@@ -141,6 +141,31 @@ The trade is real: item 5 now completes on an assumption instead of waiting.
 `deny-question` entries in `.claude/claudeque/debug.log` record what it wanted
 to ask, which is worth skimming after a long run.
 
+### Images
+
+The queue is plain text, so an attachment does not travel with a task by
+itself — and the `UserPromptSubmit` payload has no attachment field at all, so
+the idle path never sees one.
+
+On the busy path Claude does see the image, and the `CLAUDE.md` rule tells it
+to preserve it:
+
+```bash
+node src/hook.js attach "<path>"   # copies it beside the queue, prints the new path
+```
+
+The copy matters because a task may not run for hours, by which time the
+original temp file is gone. Names are timestamped and de-duplicated, so two
+screenshots called `Screenshot.png` cannot overwrite each other.
+
+An image pasted inline has no path and cannot be saved; Claude appends a short
+description instead, marked as coming from a screenshot. Either way a queued
+task should never just say "the image" — by the time it runs there is nothing
+to look at.
+
+You can always do it yourself: put the file in the repo and reference the path
+in the task text.
+
 ### Follow-up work
 
 When the last task of a run completes, Claude is asked once whether anything

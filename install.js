@@ -172,6 +172,22 @@ Do this instead:
 4. **Continue whatever you were doing**, as if the message had not arrived. Do
    not change plans, do not start the queued task, do not ask about it.
 
+## Images attached to a \`que:\` message
+
+The queue is plain text, so an attachment is lost unless you preserve it. The
+task may not run for hours, by which time a temp file will be gone.
+
+- **If the image has a local path** (an \`@\` file reference), copy it next to
+  the queue and put the returned path in the task text:
+  \`node "${HOOK}" attach "<path>"\` — it prints the new path.
+  Queue e.g. \`fix the tab overlap shown in <returned path>\`.
+- **If it has no path** (pasted inline), you cannot save it. Append a short
+  factual description of what it shows instead, marked as such — e.g.
+  \`[from a screenshot: the shop tabs overlap the bar on the right]\`.
+
+Never queue a task that refers to "the image" or "the screenshot" without one
+of these — by the time it runs, there is nothing to look at.
+
 A \`Stop\` hook delivers queued items one at a time once the current turn ends.
 
 A \`UserPromptSubmit\` hook already intercepts these messages — but only when

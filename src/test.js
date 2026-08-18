@@ -223,6 +223,39 @@ check('  body B', q.load(CWD).items[1].text, 'task B');
 check('bare trigger with no text passes through', enqueue('que:'), '');
 q.clear(CWD);
 
+// ---------------------------------------------------------------- attach
+
+// The queue is text, so an image must be copied somewhere durable: a task may
+// not run for hours, by which time a temp file is gone.
+const srcDir = path.join(CWD, 'src-images');
+fs.mkdirSync(srcDir, { recursive: true });
+const shot = path.join(srcDir, 'shop tabs.png');
+fs.writeFileSync(shot, 'not really a png');
+
+const attached = q.attach(CWD, shot);
+check('attach copies the file', fs.existsSync(attached), true);
+check('  contents preserved', fs.readFileSync(attached, 'utf8'), 'not really a png');
+check('  lands beside the queue', attached.startsWith(q.attachmentsDir(CWD)), true);
+check('  name is filesystem-safe', /\d{14}-shop_tabs\.png$/.test(attached), true);
+
+// The original may be deleted the moment the message is sent.
+fs.rmSync(srcDir, { recursive: true, force: true });
+check('survives the original being removed', fs.existsSync(attached), true);
+
+// Two files of the same name must not collide.
+fs.mkdirSync(srcDir, { recursive: true });
+fs.writeFileSync(shot, 'second one');
+const second = q.attach(CWD, shot);
+check('a same-named file does not overwrite', second === attached, false);
+check('  and both still exist', fs.existsSync(attached) && fs.existsSync(second), true);
+
+check('attaching a missing file is refused', q.attach(CWD, path.join(CWD, 'nope.png')), null);
+check('attaching a directory is refused', q.attach(CWD, srcDir), null);
+check('attach via CLI exits non-zero on a bad path',
+  cli('attach', path.join(CWD, 'nope.png')).code, 1);
+fs.rmSync(srcDir, { recursive: true, force: true });
+fs.rmSync(q.attachmentsDir(CWD), { recursive: true, force: true });
+
 // ---------------------------------------------------------------- wrap-up
 
 q.clear(CWD);

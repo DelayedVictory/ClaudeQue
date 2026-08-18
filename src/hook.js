@@ -676,6 +676,22 @@ function handleCli(mode, cwd, argv) {
     return;
   }
 
+  /*
+   * The queue is text, so an image attached to a que: message would be lost.
+   * Copying it next to the queue keeps the reference valid however long the
+   * task waits, even if the original was in a temp directory.
+   */
+  if (mode === 'attach') {
+    const dest = q.attach(cwd, argv[3]);
+    if (!dest) {
+      console.error('Usage: node src/hook.js attach <path-to-existing-file>');
+      process.exitCode = 1;
+      return;
+    }
+    console.log(dest.replace(/\\/g, '/'));
+    return;
+  }
+
   if (mode === 'park') {
     const item = q.park(cwd, argv[3], argv[4]);
     if (!item) {
@@ -803,7 +819,7 @@ function main() {
   }
 
   const cliModes = ['add', 'list', 'clear', 'pause', 'resume', 'remove',
-    'edit', 'move', 'requeue-last', 'park', 'parked', 'unpark'];
+    'edit', 'move', 'requeue-last', 'attach', 'park', 'parked', 'unpark'];
   const hookModes = ['stop', 'enqueue', 'pretool', 'statusline'];
 
   if (cliModes.includes(mode)) {

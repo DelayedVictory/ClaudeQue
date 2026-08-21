@@ -191,6 +191,43 @@ Set `CLAUDEQUE_NO_WRAPUP=1` to switch it off.
 
 ---
 
+## Sleep when everything is done
+
+Double-click **`SleepWhenIdle.bat`** to put the PC to sleep once every live
+Claude Code session has emptied its queue and gone quiet. Close the window or
+press Ctrl+C to cancel.
+
+```bash
+SleepWhenIdle.bat          # 15 minutes of quiet, then sleep
+SleepWhenIdle.bat 30       # wait for 30 minutes of quiet instead
+SleepWhenIdle.bat 15 test  # report only, never sleep
+```
+
+It finds sessions itself — no list to maintain — and re-checks every 30
+seconds, so sessions that start or finish while it runs are picked up.
+
+**An empty queue does not mean finished.** An item is popped *before* it is
+handed to Claude, so a queue reads 0 while the last task is still running. A
+session counts as done only when its queue is empty *and* its transcript has
+been silent for the whole window.
+
+That window needs to be generous. On a real run, sessions went quiet for 8–15
+minutes and then resumed — a wrap-up firing, or a long tool call writing
+nothing. Hence 15 minutes by default, **two consecutive clean polls**, and a
+60-second countdown before it actually sleeps.
+
+It refuses to sleep while anything is outstanding, and says which:
+
+- a queue that still has items
+- a **paused** queue holding work, which can never drain on its own
+- a queue in a repo whose only live session is in a worktree — it would be
+  stranded
+
+> Windows hibernates instead of sleeping if hibernation is enabled. Either way
+> the machine powers down.
+
+---
+
 ## Behaviour
 
 - **Nothing is lost.** Items leave `queue.json` only when popped, and the pop is
@@ -294,6 +331,7 @@ Tested, not assumed:
 | `install.js` | Merges hooks and the rule into `~/.claude/`; `--uninstall` reverses it |
 | `src/hook.js` | All three hook modes, and the CLI |
 | `src/queue.js` | Queue state. Atomic writes. |
+| `src/sleep-when-idle.js` | Sleeps the PC once every session is done; `SleepWhenIdle.bat` runs it |
 | `src/test.js` | Engine tests |
 | `src/install.test.js` | Installer tests — that it never clobbers foreign config |
 

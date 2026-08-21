@@ -192,9 +192,28 @@ check(
 );
 
 enqueue('queue: alias two');
-enqueue('NEXT: alias three');
-enqueue('q: alias four');
-check('all four trigger words work', q.load(CWD).items.length, 4);
+enqueue('Q: alias three');
+check('all three trigger words work', q.load(CWD).items.length, 3);
+
+// `next:` was dropped: it is ordinary English at the start of a line, so it
+// split prompts where nobody meant to, and the second half lost its context.
+q.clear(CWD);
+check('next: is no longer a trigger', enqueue('next: not a queue command'), '');
+check('  so nothing is queued', q.load(CWD).items.length, 0);
+
+q.clear(CWD);
+enqueue('que: rework the compost bin\nnext: make it match the contract UI');
+check('a next: line no longer splits a task', q.load(CWD).items.length, 1);
+check(
+  '  the whole thing stays together',
+  q.load(CWD).items[0].text,
+  'rework the compost bin\nnext: make it match the contract UI'
+);
+
+q.clear(CWD);
+enqueue('que: alias one');
+enqueue('queue: alias two');
+enqueue('q: alias three');
 
 const body = 'que: fix the header\n\n- keep it centred\n- add a test';
 q.clear(CWD);

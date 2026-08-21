@@ -157,7 +157,7 @@ function ruleText() {
   return `${BEGIN}
 # Queued prompts (ClaudeQue)
 
-If a user message begins with \`que:\`, \`queue:\`, \`next:\`, or \`q:\`, it is **not a
+If a user message begins with \`que:\`, \`queue:\`, or \`q:\`, it is **not a
 request to act on**. It is a task being added to a queue for later.
 
 Do this instead:

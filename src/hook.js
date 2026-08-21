@@ -122,9 +122,16 @@ function preview(text, n = 60) {
 
 // ---------------------------------------------------------------- hook
 
-/* que: / queue: / next: / q: — must start the message (or a later line). */
-const QUEUE_TRIGGER = /^(?:que|queue|next|q):[ \t]*/i;
-const QUEUE_TRIGGER_LINE = /^[ \t]*(?:que|queue|next|q):[ \t]*/i;
+/*
+ * que: / queue: / q: — must start the message (or a later line).
+ *
+ * `next:` was a trigger too, inherited from the plugin this borrowed the Stop
+ * hook idea from, and dropped: it is ordinary English at the start of a line,
+ * so a prompt like "…the compost bin\nnext: match the contract UI" silently
+ * split into two tasks and the second lost what "it" referred to.
+ */
+const QUEUE_TRIGGER = /^(?:que|queue|q):[ \t]*/i;
+const QUEUE_TRIGGER_LINE = /^[ \t]*(?:que|queue|q):[ \t]*/i;
 
 /*
  * Split a queue command into items. A message is normally ONE item, so that

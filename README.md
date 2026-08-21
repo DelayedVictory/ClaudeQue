@@ -51,7 +51,10 @@ Type `que: <task>` in any chat. Then send any message to start things off — th
 queue drains at the *end of a turn*, so if Claude is idle and nothing is
 running, nothing happens until a turn ends.
 
-`que:`, `queue:`, `next:` and `q:` all work.
+`que:`, `queue:` and `q:` all work.
+
+Only a line *starting* with one of those splits off a new item, so ordinary
+prose and indented continuation lines stay part of the same task.
 
 **One item, multi-line** — a prompt keeps its shape:
 
